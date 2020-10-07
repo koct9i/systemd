@@ -83,6 +83,9 @@ static enum {
         CPU_TIME,
 } arg_cpu_type = CPU_PERCENT;
 
+static char *arg_io_attr = NULL;
+static char *arg_io_device = NULL;
+
 static Group *group_free(Group *g) {
         if (!g)
                 return NULL;
@@ -259,7 +262,7 @@ static int process(
                 uint64_t wr = 0, rd = 0;
                 nsec_t timestamp;
 
-                r = cg_get_path(controller, path, all_unified ? "io.stat" : "blkio.io_service_bytes", &p);
+                r = cg_get_path(controller, path, arg_io_attr ?: all_unified ? "io.stat" : "blkio.io_service_bytes", &p);
                 if (r < 0)
                         return r;
 
@@ -281,8 +284,12 @@ static int process(
                         if (r == 0)
                                 break;
 
-                        /* Trim and skip the device */
+                        /* Trim and skip/filter the device */
                         l = strstrip(line);
+
+                        if (arg_io_device && !first_word(l, arg_io_device))
+                                continue;
+
                         l += strcspn(l, WHITESPACE);
                         l += strspn(l, WHITESPACE);
 
@@ -704,6 +711,8 @@ static int help(void) {
                "  -r --raw            Provide raw (not human-readable) numbers\n"
                "     --cpu=percentage Show CPU usage as percentage (default)\n"
                "     --cpu=time       Show CPU usage as time\n"
+               "     --io-attr=attr   Show IO statistics for this cgroup attribyte\n"
+               "     --io-device=maj:min Show IO only for one device\n"
                "  -P                  Count userspace processes instead of tasks (excl. kernel)\n"
                "  -k                  Count all processes instead of tasks (incl. kernel)\n"
                "     --recursive=BOOL Sum up process count recursively\n"
@@ -729,6 +738,8 @@ static int parse_argv(int argc, char *argv[]) {
                 ARG_CPU_TYPE,
                 ARG_ORDER,
                 ARG_RECURSIVE,
+                ARG_IO_ATTR,
+                ARG_IO_DEVICE,
         };
 
         static const struct option options[] = {
@@ -740,6 +751,8 @@ static int parse_argv(int argc, char *argv[]) {
                 { "raw",          no_argument,       NULL, 'r'           },
                 { "depth",        required_argument, NULL, ARG_DEPTH     },
                 { "cpu",          optional_argument, NULL, ARG_CPU_TYPE  },
+                { "io-attr",      optional_argument, NULL, ARG_IO_ATTR   },
+                { "io-device",    optional_argument, NULL, ARG_IO_DEVICE },
                 { "order",        required_argument, NULL, ARG_ORDER     },
                 { "recursive",    required_argument, NULL, ARG_RECURSIVE },
                 { "machine",      required_argument, NULL, 'M'           },
@@ -773,6 +786,16 @@ static int parse_argv(int argc, char *argv[]) {
                                                                optarg);
                         } else
                                 arg_cpu_type = CPU_TIME;
+
+                        break;
+
+                case ARG_IO_ATTR:
+                        arg_io_attr = optarg;
+
+                        break;
+
+                case ARG_IO_DEVICE:
+                        arg_io_device = optarg;
 
                         break;
 
